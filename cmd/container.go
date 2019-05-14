@@ -26,17 +26,19 @@ import (
 var containerCmd = &cobra.Command{
 	Use:   "container",
 	Short: "container",
-	Run: func(_ *cobra.Command, _ []string) {
+	Args: cobra.ExactArgs(1),
+	Run: func(_ *cobra.Command, containerArgs []string) {
+		args.nameOrID = containerArgs[0]
 		if actions.Recreate {
 			if err := recreateContainer(); err != nil {
-				fmt.Fprintf(os.Stderr, "container %s / %s : %s\n", args.ID, args.Name, err)
+				fmt.Fprintf(os.Stderr, "container %s : %s\n", args.nameOrID, err)
 				os.Exit(2)
 			}
 		}
 
 		if actions.Parse {
 			if cmd, err := parseContainer(); err != nil {
-				fmt.Fprintf(os.Stderr, "container %s / %s : %s\n", args.ID, args.Name, err)
+				fmt.Fprintf(os.Stderr, "container %s : %s\n", args.nameOrID, err)
 				os.Exit(2)
 			} else {
 				fmt.Println(cmd)
@@ -51,8 +53,7 @@ type containerActions struct {
 }
 
 type containerArgs struct {
-	ID   string
-	Name string
+	nameOrID   string
 }
 
 var (
@@ -71,8 +72,6 @@ func init() {
 	// and all subcommands, e.g.:
 	// containerCmd.PersistentFlags().String("foo", "", "A help for foo")
 
-	containerCmd.PersistentFlags().StringVar(&args.ID, "id", "", "Container ID")
-	containerCmd.PersistentFlags().StringVar(&args.Name, "name", "", "Container Name")
 	containerCmd.Flags().StringVar(&recreateOpts.Image, "image", "",
 		"Image for the container you specified by --id or --name if you would like to update it")
 	containerCmd.Flags().BoolVar(&recreateOpts.RestartAlways, "restart-always", false,
@@ -98,18 +97,14 @@ func init() {
 	containerCmd.Flags().StringSliceVar(&recreateOpts.KeepFiles, "keep-file", recreateOpts.KeepFiles,
 		"Keep files or directories after recreating")
 	containerCmd.Flags().BoolVarP(&actions.Recreate, "recreate", "r", false,
-		"Recreate a existed docker container")
+		"Recreate a existed docker container with specified options. The current container will be renamed to" +
+		"its original name with a suffix .legacy and stopped.")
 	containerCmd.Flags().BoolVarP(&actions.Parse, "parse", "c", false,
 		"Generate docker run command line from a existed container")
 }
 
 func recreateContainer() (err error) {
-	IDorName := args.ID
-	if len(IDorName) == 0 {
-		IDorName = args.Name
-	}
-
-	c, err := container.GetExistedDockerContainer(IDorName, dockerDaemonSocket)
+	c, err := container.GetExistedDockerContainer(args.nameOrID, dockerDaemonSocket)
 	if err != nil {
 		return
 	}
@@ -135,12 +130,7 @@ func recreateContainer() (err error) {
 }
 
 func parseContainer() (cmd string, err error) {
-	IDorName := args.ID
-	if len(IDorName) == 0 {
-		IDorName = args.Name
-	}
-
-	c, err := container.GetExistedDockerContainer(IDorName, dockerDaemonSocket)
+	c, err := container.GetExistedDockerContainer(args.nameOrID, dockerDaemonSocket)
 	if err != nil {
 		return
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 func Pull(image string) (err error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.29"))
 	if err != nil {
 		return
 	}

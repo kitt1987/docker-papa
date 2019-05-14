@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/volume/mounts"
 	"github.com/docker/go-connections/nat"
+	"github.com/kitt1987/docker-papa/pkg/utils"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,8 +23,9 @@ import (
 )
 
 type dockerContainer struct {
-	ContainerInspectData types.ContainerJSON
-	Cli                  *client.Client
+	containerInspectData types.ContainerJSON
+	imageInspectData     types.ImageInspect
+	cli                  *client.Client
 }
 
 func GetExistedDockerContainer(IDorName, daemon string) (c DockerContainer, err error) {
@@ -90,9 +92,15 @@ func GetExistedDockerContainer(IDorName, daemon string) (c DockerContainer, err 
 		return
 	}
 
+	imageInspectData, _, err := cli.ImageInspectWithRaw(ctx, containerInspectData.Image)
+	if err != nil {
+		return
+	}
+
 	c = &dockerContainer{
-		ContainerInspectData: containerInspectData,
-		Cli:                  cli,
+		containerInspectData: containerInspectData,
+		imageInspectData:     imageInspectData,
+		cli:                  cli,
 	}
 
 	return
@@ -100,32 +108,32 @@ func GetExistedDockerContainer(IDorName, daemon string) (c DockerContainer, err 
 
 func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err error) {
 	if len(opts.Image) > 0 {
-		c.ContainerInspectData.Config.Image = opts.Image
+		c.containerInspectData.Config.Image = opts.Image
 	}
 
 	if opts.RestartAlways {
-		c.ContainerInspectData.HostConfig.RestartPolicy.Name = `aways`
+		c.containerInspectData.HostConfig.RestartPolicy.Name = `aways`
 	}
 
 	if len(opts.Network) > 0 {
-		c.ContainerInspectData.HostConfig.NetworkMode = container.NetworkMode(opts.Network)
+		c.containerInspectData.HostConfig.NetworkMode = container.NetworkMode(opts.Network)
 	}
 
 	if opts.RenewBindings {
-		c.ContainerInspectData.HostConfig.Binds = []string{}
+		c.containerInspectData.HostConfig.Binds = []string{}
 	}
 
-	c.ContainerInspectData.HostConfig.Binds = append(c.ContainerInspectData.HostConfig.Binds, opts.Bindings...)
+	c.containerInspectData.HostConfig.Binds = append(c.containerInspectData.HostConfig.Binds, opts.Bindings...)
 	mountParser := mounts.NewParser(runtime.GOOS)
 	for _, bind := range opts.Bindings {
 		var mountPoint *mounts.MountPoint
-		mountPoint, err = mountParser.ParseMountRaw(bind, c.ContainerInspectData.HostConfig.VolumeDriver)
+		mountPoint, err = mountParser.ParseMountRaw(bind, c.containerInspectData.HostConfig.VolumeDriver)
 		if err != nil {
 			err = fmt.Errorf("fail to parse bind %s cuz %s", bind, err)
 			return
 		}
 
-		c.ContainerInspectData.HostConfig.Mounts = append(c.ContainerInspectData.HostConfig.Mounts, mount.Mount{
+		c.containerInspectData.HostConfig.Mounts = append(c.containerInspectData.HostConfig.Mounts, mount.Mount{
 			Type:        mount.TypeBind,
 			Source:      mountPoint.Source,
 			Target:      mountPoint.Destination,
@@ -138,28 +146,28 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	}
 
 	if opts.RenewEnv {
-		c.ContainerInspectData.Config.Env = []string{}
+		c.containerInspectData.Config.Env = []string{}
 	}
 
-	c.ContainerInspectData.Config.Env = append(c.ContainerInspectData.Config.Env, opts.Env...)
+	c.containerInspectData.Config.Env = append(c.containerInspectData.Config.Env, opts.Env...)
 
 	if opts.RenewPortMapping {
-		c.ContainerInspectData.HostConfig.PortBindings = make(nat.PortMap)
+		c.containerInspectData.HostConfig.PortBindings = make(nat.PortMap)
 	}
 
 	_, bindings, err := nat.ParsePortSpecs(opts.PortMapping)
 	for k, v := range bindings {
-		c.ContainerInspectData.HostConfig.PortBindings[k] = v
+		c.containerInspectData.HostConfig.PortBindings[k] = v
 	}
 
 	if opts.RenewCmd {
-		c.ContainerInspectData.Config.Cmd = strslice.StrSlice{}
+		c.containerInspectData.Config.Cmd = strslice.StrSlice{}
 	}
 
-	c.ContainerInspectData.Config.Cmd = append(c.ContainerInspectData.Config.Cmd, opts.Cmd...)
+	c.containerInspectData.Config.Cmd = append(c.containerInspectData.Config.Cmd, opts.Cmd...)
 
 	if len(opts.Rename) > 0 {
-		c.ContainerInspectData.Name = opts.Rename
+		c.containerInspectData.Name = opts.Rename
 	}
 
 	const tmpFilesToKeep = `.docker-files-to-keep`
@@ -168,14 +176,14 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	for _, fileToKeep := range opts.KeepFiles {
 		replicator := func(f string) (err error) {
 			fileHash := md5.Sum([]byte(f))
-			dstFile := filepath.Join(tmpFilesToKeep, c.ContainerInspectData.ID+hex.EncodeToString(fileHash[:])+".tar")
+			dstFile := filepath.Join(tmpFilesToKeep, c.containerInspectData.ID+hex.EncodeToString(fileHash[:])+".tar")
 			writer, err := os.Create(dstFile)
 			if err != nil {
 				return
 			}
 
 			defer writer.Close()
-			reader, _, err := c.Cli.CopyFromContainer(context.Background(), c.ContainerInspectData.ID, f)
+			reader, _, err := c.cli.CopyFromContainer(context.Background(), c.containerInspectData.ID, f)
 			if err != nil {
 				return
 			}
@@ -195,7 +203,7 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	}
 
 	ctx := context.Background()
-	_, err = c.Cli.ContainerUpdate(ctx, c.ContainerInspectData.ID, container.UpdateConfig{
+	_, err = c.cli.ContainerUpdate(ctx, c.containerInspectData.ID, container.UpdateConfig{
 		RestartPolicy: container.RestartPolicy{
 			Name: "no",
 		}})
@@ -203,44 +211,44 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, "Mark container", c.ContainerInspectData.Name, " as non-autorestart")
+	fmt.Fprintln(os.Stdout, "Mark container", c.containerInspectData.Name, " as non-autorestart")
 
-	if err = c.Cli.ContainerStop(ctx, c.ContainerInspectData.ID, nil); err != nil {
+	if err = c.cli.ContainerStop(ctx, c.containerInspectData.ID, nil); err != nil {
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, "Stop container", c.ContainerInspectData.Name)
+	fmt.Fprintln(os.Stdout, "Stop container", c.containerInspectData.Name)
 
-	err = c.Cli.ContainerRename(ctx, c.ContainerInspectData.ID, c.ContainerInspectData.Name+".legacy")
+	err = c.cli.ContainerRename(ctx, c.containerInspectData.ID, c.containerInspectData.Name+".legacy")
 	if err != nil {
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Rename container %s to %s\n", c.ContainerInspectData.Name,
-		c.ContainerInspectData.Name+".legacy")
+	fmt.Fprintf(os.Stdout, "Rename container %s to %s\n", c.containerInspectData.Name,
+		c.containerInspectData.Name+".legacy")
 
-	created, err := c.Cli.ContainerCreate(ctx, c.ContainerInspectData.Config, c.ContainerInspectData.HostConfig,
+	created, err := c.cli.ContainerCreate(ctx, c.containerInspectData.Config, c.containerInspectData.HostConfig,
 		&network.NetworkingConfig{
-			EndpointsConfig: c.ContainerInspectData.NetworkSettings.Networks,
+			EndpointsConfig: c.containerInspectData.NetworkSettings.Networks,
 		},
-		c.ContainerInspectData.Name)
+		c.containerInspectData.Name)
 	if err != nil {
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, "Create new container", c.ContainerInspectData.Name)
+	fmt.Fprintln(os.Stdout, "Create new container", c.containerInspectData.Name)
 
 	for _, fileToKeep := range opts.KeepFiles {
 		replicator := func(f string) (err error) {
 			fileHash := md5.Sum([]byte(f))
-			dstFile := filepath.Join(tmpFilesToKeep, c.ContainerInspectData.ID+hex.EncodeToString(fileHash[:])+".tar")
+			dstFile := filepath.Join(tmpFilesToKeep, c.containerInspectData.ID+hex.EncodeToString(fileHash[:])+".tar")
 			reader, err := os.Open(dstFile)
 			if err != nil {
 				return
 			}
 
 			defer reader.Close()
-			err = c.Cli.CopyToContainer(context.Background(), created.ID, fileToKeep, reader, types.CopyToContainerOptions{})
+			err = c.cli.CopyToContainer(context.Background(), created.ID, fileToKeep, reader, types.CopyToContainerOptions{})
 			if err != nil {
 				return
 			}
@@ -254,98 +262,98 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	}
 
 	newID = created.ID
-	if err = c.Cli.ContainerStart(ctx, newID, types.ContainerStartOptions{}); err != nil {
+	if err = c.cli.ContainerStart(ctx, newID, types.ContainerStartOptions{}); err != nil {
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, "Start container", c.ContainerInspectData.Name)
+	fmt.Fprintln(os.Stdout, "Start container", c.containerInspectData.Name)
 
 	return
 }
 
 func (c *dockerContainer) ConvertToDockerCommand() (cmd string, err error) {
 	cmdArray := []string{`docker run`}
-	cmdArray = append(cmdArray, `--name`, c.ContainerInspectData.Name[1:])
-	if c.ContainerInspectData.HostConfig.RestartPolicy.MaximumRetryCount > 0 {
+	cmdArray = append(cmdArray, `--name`, c.containerInspectData.Name[1:])
+	if c.containerInspectData.HostConfig.RestartPolicy.MaximumRetryCount > 0 {
 		cmdArray = append(cmdArray, `--restart`,
-			fmt.Sprintf(`%s:%d`, c.ContainerInspectData.HostConfig.RestartPolicy.Name,
-				c.ContainerInspectData.HostConfig.RestartPolicy.MaximumRetryCount))
+			fmt.Sprintf(`%s:%d`, c.containerInspectData.HostConfig.RestartPolicy.Name,
+				c.containerInspectData.HostConfig.RestartPolicy.MaximumRetryCount))
 	} else {
-		cmdArray = append(cmdArray, `--restart`, c.ContainerInspectData.HostConfig.RestartPolicy.Name)
+		cmdArray = append(cmdArray, `--restart`, c.containerInspectData.HostConfig.RestartPolicy.Name)
 	}
 
-	if c.ContainerInspectData.HostConfig.AutoRemove {
+	if c.containerInspectData.HostConfig.AutoRemove {
 		cmdArray = append(cmdArray, `--rm`)
 	}
 
-	if !c.ContainerInspectData.Config.AttachStdin && !c.ContainerInspectData.Config.AttachStdout &&
-		!c.ContainerInspectData.Config.AttachStderr {
+	if !c.containerInspectData.Config.AttachStdin && !c.containerInspectData.Config.AttachStdout &&
+		!c.containerInspectData.Config.AttachStderr {
 		cmdArray = append(cmdArray, `-d`)
 	} else {
-		if c.ContainerInspectData.Config.AttachStdin {
+		if c.containerInspectData.Config.AttachStdin {
 			cmdArray = append(cmdArray, `-a stdin`)
 		}
 
-		if c.ContainerInspectData.Config.AttachStdout {
+		if c.containerInspectData.Config.AttachStdout {
 			cmdArray = append(cmdArray, `-a stdout`)
 		}
 
-		if c.ContainerInspectData.Config.AttachStderr {
+		if c.containerInspectData.Config.AttachStderr {
 			cmdArray = append(cmdArray, `-a stderr`)
 		}
 	}
 
-	if c.ContainerInspectData.Config.Tty {
+	if c.containerInspectData.Config.Tty {
 		cmdArray = append(cmdArray, `-t`)
 	}
 
-	for port, binding := range c.ContainerInspectData.HostConfig.PortBindings {
+	for port, binding := range c.containerInspectData.HostConfig.PortBindings {
 		for _, hostPort := range binding {
 			if len(hostPort.HostIP) > 0 {
-				cmdArray = append(cmdArray, fmt.Sprintf(`-p %s:%s:%s`, port, hostPort.HostIP, hostPort.HostPort))
+				cmdArray = append(cmdArray, fmt.Sprintf(`-p %s:%s:%s`, hostPort.HostIP, hostPort.HostPort, port))
 			} else {
-				cmdArray = append(cmdArray, fmt.Sprintf(`-p %s:%s`, port, hostPort.HostPort))
+				cmdArray = append(cmdArray, fmt.Sprintf(`-p %s:%s`, hostPort.HostPort, port))
 			}
 		}
 	}
 
-	if c.ContainerInspectData.HostConfig.NetworkMode.IsNone() {
+	if c.containerInspectData.HostConfig.NetworkMode.IsNone() {
 		cmdArray = append(cmdArray, `--net=none`)
 	}
 
-	if c.ContainerInspectData.HostConfig.NetworkMode.IsHost() {
+	if c.containerInspectData.HostConfig.NetworkMode.IsHost() {
 		cmdArray = append(cmdArray, `--net=host`)
 	}
 
-	if c.ContainerInspectData.HostConfig.NetworkMode.IsUserDefined() {
-		cmdArray = append(cmdArray, `--net=`+c.ContainerInspectData.HostConfig.NetworkMode.UserDefined())
+	if c.containerInspectData.HostConfig.NetworkMode.IsUserDefined() {
+		cmdArray = append(cmdArray, `--net=`+c.containerInspectData.HostConfig.NetworkMode.UserDefined())
 	}
 
-	for _, dns := range c.ContainerInspectData.HostConfig.DNS {
+	for _, dns := range c.containerInspectData.HostConfig.DNS {
 		cmdArray = append(cmdArray, `--dns`, dns)
 	}
 
-	for _, dns := range c.ContainerInspectData.HostConfig.DNSOptions {
+	for _, dns := range c.containerInspectData.HostConfig.DNSOptions {
 		cmdArray = append(cmdArray, `--dns-option`, dns)
 	}
 
-	for _, dns := range c.ContainerInspectData.HostConfig.DNSSearch {
+	for _, dns := range c.containerInspectData.HostConfig.DNSSearch {
 		cmdArray = append(cmdArray, `--dns-search`, dns)
 	}
 
-	for _, host := range c.ContainerInspectData.HostConfig.ExtraHosts {
+	for _, host := range c.containerInspectData.HostConfig.ExtraHosts {
 		cmdArray = append(cmdArray, `--add-host`, host)
 	}
 
-	if c.ContainerInspectData.HostConfig.Privileged {
+	if c.containerInspectData.HostConfig.Privileged {
 		cmdArray = append(cmdArray, `--privileged`)
 	}
 
-	if c.ContainerInspectData.HostConfig.PublishAllPorts {
+	if c.containerInspectData.HostConfig.PublishAllPorts {
 		cmdArray = append(cmdArray, `-P`)
 	}
 
-	for _, containerMount := range c.ContainerInspectData.Mounts {
+	for _, containerMount := range c.containerInspectData.Mounts {
 		if containerMount.Type != mount.TypeBind {
 			fmt.Fprintf(os.Stdout, "volume %s:%s with type %s is ignored", containerMount.Source,
 				containerMount.Destination, containerMount.Type)
@@ -369,34 +377,35 @@ func (c *dockerContainer) ConvertToDockerCommand() (cmd string, err error) {
 		cmdArray = append(cmdArray, `-v`, volumeOpts)
 	}
 
-	for _, env := range c.ContainerInspectData.Config.Env {
-		if strings.HasPrefix(env, `PATH`) {
-			continue
-		}
-
+	envs := utils.Diff(c.containerInspectData.Config.Env, c.imageInspectData.Config.Env)
+	for _, env := range envs {
 		cmdArray = append(cmdArray, `-e`, env)
 	}
 
-	if len(c.ContainerInspectData.Config.Entrypoint) > 0 {
+	if len(c.containerInspectData.Config.Entrypoint) > 0 &&
+		!utils.SliceEqual(
+			c.containerInspectData.Config.Entrypoint,
+			c.imageInspectData.ContainerConfig.Entrypoint,
+		) {
 		cmdArray = append(cmdArray, fmt.Sprintf(`--entrypoint='%s'`,
-			strings.Join(c.ContainerInspectData.Config.Entrypoint, ` `)))
+			strings.Join(c.containerInspectData.Config.Entrypoint, ` `)))
 	}
 
-	if c.ContainerInspectData.Config.Healthcheck != nil {
+	if c.containerInspectData.Config.Healthcheck != nil {
 		cmdArray = append(cmdArray, fmt.Sprintf(`--health-cmd='%s'`,
-			strings.Join(c.ContainerInspectData.Config.Healthcheck.Test, ` `)))
+			strings.Join(c.containerInspectData.Config.Healthcheck.Test, ` `)))
 		cmdArray = append(cmdArray, `--health-interval=`,
-			c.ContainerInspectData.Config.Healthcheck.Interval.String())
+			c.containerInspectData.Config.Healthcheck.Interval.String())
 		cmdArray = append(cmdArray, fmt.Sprintf(`--health-retries=%d`,
-			c.ContainerInspectData.Config.Healthcheck.Retries))
+			c.containerInspectData.Config.Healthcheck.Retries))
 		cmdArray = append(cmdArray, `--health-timeout=`,
-			c.ContainerInspectData.Config.Healthcheck.Timeout.String())
+			c.containerInspectData.Config.Healthcheck.Timeout.String())
 		cmdArray = append(cmdArray, `--health-start-period=`,
-			c.ContainerInspectData.Config.Healthcheck.StartPeriod.String())
+			c.containerInspectData.Config.Healthcheck.StartPeriod.String())
 	}
 
-	cmdArray = append(cmdArray, c.ContainerInspectData.Config.Image)
-	cmdArray = append(cmdArray, strings.Join(c.ContainerInspectData.Args, ` `))
+	cmdArray = append(cmdArray, c.containerInspectData.Config.Image)
+	cmdArray = append(cmdArray, strings.Join(c.containerInspectData.Config.Cmd, ` `))
 	cmd = strings.Join(cmdArray, ` `)
 	return
 }
