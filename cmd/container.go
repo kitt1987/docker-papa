@@ -26,6 +26,11 @@ import (
 var containerCmd = &cobra.Command{
 	Use:   "container",
 	Short: "container",
+	Long: `Recreate a container with the same arguments except a new image.
+	docker-papa container -r turtle --image registry.cloudtogo.cn/cloudtogo.cn/official/turtle:1.7.0-build-create-new-cluster-20190520141436
+
+	Show a docker command line could run the same container.
+	docker-papa container -c turtle`,
 	Args: cobra.ExactArgs(1),
 	Run: func(_ *cobra.Command, containerArgs []string) {
 		args.nameOrID = containerArgs[0]
@@ -50,6 +55,7 @@ var containerCmd = &cobra.Command{
 type containerActions struct {
 	Recreate bool
 	Parse    bool
+	Recover bool //Get a legacy container back
 }
 
 type containerArgs struct {
@@ -110,12 +116,14 @@ func recreateContainer() (err error) {
 	}
 
 	if len(recreateOpts.Image) > 0 {
-		if err = image.Pull(recreateOpts.Image); err != nil {
-			fmt.Fprintf(os.Stderr, "can't pull image %s:%s. use local images instead.\n",
-				recreateOpts.Image, err)
+		if found, err := image.ExistsLocally(recreateOpts.Image); err != nil || !found {
+			if err = image.Pull(recreateOpts.Image); err != nil {
+				fmt.Fprintf(os.Stderr, "can't pull image %s:%s. use local images instead.\n",
+					recreateOpts.Image, err)
+			}
+		} else {
+			fmt.Fprintf(os.Stdout, "Found image %s locally\n", recreateOpts.Image)
 		}
-
-		// FIXME check the local image
 
 		if len(cmd) > 0 {
 			recreateOpts.Cmd = splitCliArgs(cmd)

@@ -30,10 +30,6 @@ var dockerDaemonSocket string
 var rootCmd = &cobra.Command{
 	Use:   "docker-papa",
 	Short: "A Docker client better than official",
-	Long: `A Docker client supplies a lot of functions which official client haven't`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	//	Run: func(cmd *cobra.Command, args []string) { },
 }
 
 // Execute adds all child commands to the root command and sets actions appropriately.

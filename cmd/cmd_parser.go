@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	WRAPPER         = `"`
-	WRAPPER_ESCAPER = `\"`
-	SEPARATOR       = `\s`
+	Wrapper        = `"`
+	WrapperEscaper = `\"`
+	Separator      = `\s`
 )
 
 func genPattern(wrapper string) *regexp.Regexp {
@@ -18,15 +18,15 @@ func genPattern(wrapper string) *regexp.Regexp {
 }
 
 func splitCliArgs(cli string) (args []string) {
-	re := genPattern(WRAPPER)
-	cmdArgs := strings.Replace(cli, WRAPPER_ESCAPER, "\x00", -1)
+	re := genPattern(Wrapper)
+	cmdArgs := strings.Replace(cli, WrapperEscaper, "\x00", -1)
 	args = re.FindAllString(cmdArgs, -1)
 	for i, arg := range args {
 		if strings.HasPrefix(args[i], `"`) && strings.HasSuffix(args[i], `"`) {
 			arg = strings.Trim(args[i], `"`)
 		}
 
-		args[i] = strings.Replace(arg, "\x00", WRAPPER, -1)
+		args[i] = strings.Replace(arg, "\x00", Wrapper, -1)
 	}
 
 	return

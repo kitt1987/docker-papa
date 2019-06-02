@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/Microsoft/go-winio v0.4.11
+	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/containerd/continuity v0.0.0-20181203112020-004b46473808
 	github.com/docker/distribution v0.0.0-20180905023441-9930542dc51f
 	github.com/docker/docker v0.0.0-20190109221700-b4842cfe88b3
