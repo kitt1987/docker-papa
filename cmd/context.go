@@ -26,8 +26,15 @@ import (
 var contextCmd = &cobra.Command{
 	Use:   "context",
 	Short: "A context of pushing or pulling images",
-	Long:  `Manipulate context of docker-papa.`,
-	Args:  cobra.MinimumNArgs(1),
+	Long: `Manipulate context of docker-papa. 
+
+Samples:
+  Create a new context,
+  docker-papa context create uat --registry registry-bj.uat.abc.cn
+  
+  Switch to another context,
+  docker-papa context switch uat`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		action := strings.ToLower(args[0])
 		args = args[1:]
@@ -58,6 +65,26 @@ var contextCmd = &cobra.Command{
 			}
 
 			err = ctx.Switch(&c, ctx.SingleUserContext)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "switch context failed: %s\n", err)
+				os.Exit(2)
+			}
+
+			fmt.Printf("context %s is used\n", c.Name)
+
+		case "switch":
+			if len(args) == 0 || len(args[0]) == 0 {
+				fmt.Fprintf(os.Stderr, "context name is required\n")
+				os.Exit(2)
+			}
+
+			c, err := ctx.Load(args[0])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "load context %s failed: %s\n", args[0], err)
+				os.Exit(2)
+			}
+
+			err = ctx.Switch(c, ctx.SingleUserContext)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "switch context failed: %s\n", err)
 				os.Exit(2)
