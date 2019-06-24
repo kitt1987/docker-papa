@@ -22,6 +22,8 @@ import (
 	"os"
 )
 
+// FIXME a command to show or purge legacy history
+
 // containerCmd represents the container command
 var containerCmd = &cobra.Command{
 	Use:   "container",
@@ -84,7 +86,7 @@ func init() {
 		"Make the container you specified by --id or --name always restart on fail or boot")
 	containerCmd.Flags().StringVar(&recreateOpts.Network, "net", "",
 		"Change network of the container you specified by --id or --name")
-	containerCmd.Flags().StringSliceVarP(&recreateOpts.Bindings, "volume", "v", recreateOpts.Bindings,
+	containerCmd.Flags().StringSliceVarP(&recreateOpts.Bindings, "volume", "l", recreateOpts.Bindings,
 		"Mounts for the container you specified by --id or --name")
 	containerCmd.Flags().BoolVar(&recreateOpts.RenewBindings, "renew-mounts", false,
 		"Drop all mounts of the container")
@@ -117,7 +119,7 @@ func recreateContainer() (err error) {
 
 	if len(recreateOpts.Image) > 0 {
 		if found, err := image.ExistsLocally(recreateOpts.Image); err != nil || !found {
-			if err = image.Pull(recreateOpts.Image); err != nil {
+			if err = image.DockerPull(recreateOpts.Image); err != nil {
 				fmt.Fprintf(os.Stderr, "can't pull image %s:%s. use local images instead.\n",
 					recreateOpts.Image, err)
 			}

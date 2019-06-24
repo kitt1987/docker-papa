@@ -15,10 +15,13 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"syscall"
 
-	homedir "github.com/mitchellh/go-homedir"
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -35,6 +38,24 @@ var rootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets actions appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	if len(os.Args) > 1 {
+		if _, _, err := rootCmd.Find(os.Args[1:]); err != nil {
+			fmt.Println(err)
+			dockerPath, err := exec.LookPath("docker")
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(2)
+			}
+
+			// FIXME test on dumb Windows
+			err = syscall.Exec(dockerPath, os.Args, os.Environ())
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(2)
+			}
+		}
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -49,9 +70,10 @@ func init() {
 	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.docker-papa.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&dockerDaemonSocket, "host", "H", "", "Daemon socket to connect to")
+	flag.CommandLine.Parse([]string{})
+	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	// Cobra also supports local actions, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.

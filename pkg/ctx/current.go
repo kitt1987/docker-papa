@@ -15,11 +15,12 @@ const (
 	MultipleUserContext      ContextMode = "multi-user"
 	CurrentContextFile                   = "context"
 	GlobalCurrentContextFile             = "papa-context"
+	ContextRegistry                      = "registry.context"
 )
 
 type CurrentContext struct {
 	*Context `yaml:"inline"`
-	CtxMode ContextMode `yaml:"contextMode,omitempty"`
+	CtxMode  ContextMode `yaml:"contextMode,omitempty"`
 }
 
 func (c CurrentContext) Save() (err error) {

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/kitt1987/docker-papa/pkg/ctx"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 	"os"
 	"strings"
 )
@@ -94,6 +95,15 @@ Samples:
 
 		case "list":
 		case "purge":
+		case "current":
+			c, err := ctx.Current()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "switch context failed: %s\n", err)
+				os.Exit(2)
+			}
+
+			yaml.NewEncoder(os.Stdout).Encode(c)
+
 		default:
 			fmt.Printf("context called with %#v/n", args)
 		}
@@ -133,6 +143,6 @@ func init() {
 	contextCmd.Flags().StringVar(&ctxArgs.registry, "registry", "",
 		"The default registry in the context to which traffic will be forwarded when pushing to or pulling "+
 			"from the well-known registry in the context")
-	contextCmd.Flags().StringVar(&ctxArgs.registryName, "well-known-registry-in-context", "registry.context",
+	contextCmd.Flags().StringVar(&ctxArgs.registryName, "well-known-registry-in-context", ctx.ContextRegistry,
 		"This argument shouldn't be changed unless it occupies some domain already been used.")
 }

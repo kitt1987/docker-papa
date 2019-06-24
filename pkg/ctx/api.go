@@ -1,8 +1,7 @@
 package ctx
 
 func Create(context *Context) (err error) {
-	err = context.Save()
-	return
+	return context.Save()
 }
 
 func Load(name string) (context *Context, err error) {
@@ -21,4 +20,14 @@ func Switch(context *Context, mode ContextMode) (err error) {
 	}
 
 	return cc.Save()
+}
+
+func Current() (context *Context, err error) {
+	cc := CurrentContext{}
+	if err = cc.Load(); err != nil {
+		return
+	}
+
+	context = cc.Context
+	return
 }

@@ -4,14 +4,14 @@ import (
 	"context"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
 	"os"
 )
 
-func Pull(image string) (err error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.29"))
+func DockerPull(image string) (err error) {
+	cli, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithVersion("1.29"))
 	if err != nil {
 		return
 	}
@@ -30,13 +30,13 @@ func Pull(image string) (err error) {
 }
 
 func ExistsLocally(image string) (yes bool, err error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.29"))
+	cli, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithVersion("1.29"))
 	if err != nil {
 		return
 	}
 
 	matched, err := cli.ImageList(context.Background(), types.ImageListOptions{
-		All: true,
+		All:     true,
 		Filters: filters.NewArgs(filters.Arg("reference", image)),
 	})
 

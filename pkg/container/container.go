@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/volume/mounts"
 	"github.com/docker/go-connections/nat"
+	"github.com/kitt1987/docker-papa/pkg/history"
 	"github.com/kitt1987/docker-papa/pkg/utils"
 	"io"
 	"os"
@@ -27,6 +28,10 @@ type dockerContainer struct {
 	imageInspectData     types.ImageInspect
 	cli                  *client.Client
 }
+
+const (
+	containerRecreateHistory = "container/recreate.history"
+)
 
 func GetExistedDockerContainer(IDorName, daemon string) (c DockerContainer, err error) {
 	var cli *client.Client
@@ -112,7 +117,7 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	}
 
 	if opts.RestartAlways {
-		c.containerInspectData.HostConfig.RestartPolicy.Name = `aways`
+		c.containerInspectData.HostConfig.RestartPolicy.Name = `always`
 	}
 
 	if len(opts.Network) > 0 {
@@ -203,29 +208,21 @@ func (c *dockerContainer) Recreate(opts *RecreateOptions) (newID string, err err
 	}
 
 	ctx := context.Background()
-	_, err = c.cli.ContainerUpdate(ctx, c.containerInspectData.ID, container.UpdateConfig{
-		RestartPolicy: container.RestartPolicy{
-			Name: "no",
-		}})
+	cmd, err := c.ConvertToDockerCommand()
 	if err != nil {
 		return
 	}
 
-	fmt.Fprintln(os.Stdout, "Mark container", c.containerInspectData.Name, " as non-autorestart")
+	fmt.Fprintln(os.Stdout, "You can recover the container by execute command")
+	fmt.Fprintln(os.Stdout, cmd)
 
-	if err = c.cli.ContainerStop(ctx, c.containerInspectData.ID, nil); err != nil {
-		return
-	}
-
-	fmt.Fprintln(os.Stdout, "Stop container", c.containerInspectData.Name)
-
-	err = c.cli.ContainerRename(ctx, c.containerInspectData.ID, c.containerInspectData.Name+".legacy")
+	recreateHistory, err := history.OpenFile(containerRecreateHistory)
 	if err != nil {
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Rename container %s to %s\n", c.containerInspectData.Name,
-		c.containerInspectData.Name+".legacy")
+	recreateHistory.Log(c.containerInspectData.Name, cmd)
+	recreateHistory.Close()
 
 	created, err := c.cli.ContainerCreate(ctx, c.containerInspectData.Config, c.containerInspectData.HostConfig,
 		&network.NetworkingConfig{

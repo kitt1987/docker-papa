@@ -14,8 +14,12 @@
 
 package main
 
-import "github.com/kitt1987/docker-papa/cmd"
+import (
+	"github.com/golang/glog"
+	"github.com/kitt1987/docker-papa/cmd"
+)
 
 func main() {
+	defer glog.Flush()
 	cmd.Execute()
 }
